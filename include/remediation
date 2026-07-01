@@ -147,6 +147,13 @@
             return 0
         fi
 
+        if [ -n "${REM_VERIFYCMD}" ] && sh -c "${REM_VERIFYCMD}" 2> /dev/null; then
+            echo "${GREEN}[OK] Compliant - no fix needed.${NORMAL} This control is already configured as recommended."
+            return 0
+        fi
+
+        echo "${RED}[FAIL] Not compliant - a fix is available.${NORMAL}"
+        echo ""
         printf "%s\n" "${WHITE}Fix command${NORMAL}   : ${REM_FIXCMD}"
         printf "%s\n" "${WHITE}Verify command${NORMAL}: ${REM_VERIFYCMD}"
         echo ""
