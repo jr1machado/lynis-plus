@@ -1,54 +1,42 @@
-lynis-plus (this fork)
-This repository is lynis-plus, a fork of upstream Lynis, currently at version 4.0. It adds a CIS Benchmark compliance, hardening-report, and guided remediation layer on top of the standard Lynis audit engine. See RELEASE_NOTES_4_0.md and NEW_FEATURES_4_0.MD for details.
+# Lynis-Plus 4.0 / 4.0.1 — Release Notes
 
-Contributions in 4.0
-CIS Benchmark compliance scoring engine (include/compliance), scoring Lynis test results against CIS controls per category and per CIS Level (L1/L2).
-CIS rule catalog (include/rules_cis/) covering Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, and Rocky Linux 9 (L1 + L2), with every mapped test-no validated against real Lynis tests.
-Offline HTML/Markdown hardening dashboard generator (include/report_hardening).
-New --hardening / --hardening-l2 CLI flags, fully opt-in and backwards compatible with the standard lynis audit system flow.
-Backup Engine (include/backup) — timestamped snapshot of any file before it's modified, tracked in a plain-text manifest.
-Remediation Engine (include/remediation) — applies a single CIS control fix with mandatory human approval, then auto-verifies and auto-rolls-back on failure.
-Rollback Engine (include/rollback) — restores a file to its last backed-up state, on demand or automatically.
-New lynis apply / lynis rollback commands, with fix/verify metadata currently shipped for SSH-001 (disable root login) and AUTH-005 (default umask) across all 5 supported distros; every other control reports "no automated fix available yet" instead of guessing.
-Usage guide
-1. CIS compliance scoring + hardening report
+Lynis-Plus is a fork of [Lynis](https://github.com/CISOfy/lynis), built on top of upstream release 3.1.7, adding a CIS Benchmark compliance, hardening-report, and guided remediation layer on top of the existing audit engine.
 
-./lynis audit system --hardening        # score the audit against CIS Level 1 controls
-./lynis audit system --hardening-l2     # also score CIS Level 2 controls (audit-only, separate score)
-Requires root (or sudo) for a full scan, same as a normal Lynis audit. Output:
+## 4.0 — CIS compliance scoring + hardening reports
 
-On-screen: overall + per-category score, right after the normal Lynis summary.
-/var/log/lynis-report.dat: raw finding[]= / cis_*= entries.
-/var/log/lynis-hardening-report.html: standalone offline dashboard (dark theme, color-coded PASS/FAIL/SKIP).
-/var/log/lynis-hardening-report.md: same data as a Markdown table, good for CI/PRs.
-Supported OS: Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, Rocky Linux 9. Other OSes just skip the compliance step (audit still runs normally).
+- **CIS Compliance Engine** (`include/compliance`): cross-references Lynis test results against CIS Benchmark controls and computes an adherence score, per category and per CIS Level (L1 / L2).
+- **CIS Rule Catalog** (`include/rules_cis/`): declarative `.rules` mappings covering Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, and Rocky Linux 9 (L1 + L2). Every `test-no` validated against the real `Register --test-no` entries in `include/tests_*`.
+- **Hardening Report Engine** (`include/report_hardening`): standalone offline HTML and Markdown dashboards (`lynis-hardening-report.html` / `.md`) with score, per-category breakdown, and per-control status.
+- **New CLI flags**: `--hardening` (score against CIS Level 1), `--hardening-l2` (also score CIS Level 2, tracked separately).
 
-2. Applying a fix for a CIS control
+## 4.0.1 — Guided remediation (backup, apply, rollback)
 
-./lynis apply --test-no SSH-7408              # disable root SSH login (with approval prompt)
-./lynis apply --test-no AUTH-9328              # set a strict default umask (027)
-./lynis apply --test-no <ANY-TEST-ID> --dry-run  # preview impact + commands, no changes made, no prompt
-<ID> is the Lynis test-no shown in finding[]= entries or the hardening report table (e.g. SSH-7408); the CIS rule ID (e.g. SSH-001) also works. Flow, always in this order:
+- **Backup Engine** (`include/backup`): timestamped snapshot of a file before it's modified, tracked in a plain-text manifest (`backups/manifest.log`).
+- **Remediation Engine** (`include/remediation`): applies a single CIS control fix — checks compliance first (green `[OK]`/red `[FAIL]`), requires explicit `y/N` approval, backs up, runs the fix, verifies, and auto-rolls-back on verification failure.
+- **Rollback Engine** (`include/rollback`): restores a file to its last backed-up state, on demand (`lynis rollback`) or automatically when a fix fails verification.
+- **New CLI commands**: `lynis apply --test-no <ID> [--dry-run]`, `lynis rollback --test-no <ID>`.
+- **Fix coverage** (CIS Level 1 only — Level 2 stays audit-only by design):
 
-Shows the rule's title, CIS section, severity, target file, and the exact fix/verify commands.
-If no fix is defined for that control yet, says so and stops — nothing is touched.
-Prompts Apply this fix? [y/N] — nothing happens without an explicit y.
-Backs up the target file (backups/<date>/<rule>.<file>.<timestamp>.bak, indexed in backups/manifest.log).
-Runs the fix, then the verify command.
-If verification fails, automatically restores the backup and reports the failure.
-Logs the outcome to history/remediation.log (timestamp|rule|test-no|status|hostname).
-Only CIS Level 1 rules can be applied — Level 2 controls are intentionally audit-only (higher risk of breaking things) and are never targeted by apply.
+  | Distro | Controls with a fix | Total L1 controls |
+  |---|---|---|
+  | Ubuntu 22.04 | 15 | 21 |
+  | Ubuntu 24.04 | 16 | 22 |
+  | Oracle Linux 9 | 11 | 21 |
+  | RHEL 9 | 11 | 21 |
+  | Rocky Linux 9 | 11 | 21 |
 
-3. Rolling back a fix
+  Covered: SSH root login, umask, PAM password quality, password aging, core dump storage, safe sysctl hardening (dmesg_restrict, kptr_restrict, tcp_syncookies), AppArmor/SELinux tooling install (Ubuntu also gets AppArmor enable), login/net banners, cron/at, rsyslog/journald/logrotate.
 
-./lynis rollback --test-no SSH-7408
-Restores the target file from its most recent backup for that rule, regardless of whether the last apply succeeded, failed, or was applied a while ago. Safe to run even if nothing was ever applied — it just reports there's no backup to restore.
+  Left manual on purpose, not for lack of effort: account/group duplicate cleanup (needs a human decision on which to touch), SSH user/group allowlists (same reason), firewall/nftables rules, disabling IP forwarding, and flipping SELinux enforcing mode — all high blast-radius changes that can lock out remote access, break routing/NAT, or need a reboot + filesystem relabel.
 
-4. Global flags still apply
+## Upgrade notes
 
-Any global Lynis flag (--no-colors, --quiet, --verbose, ...) must be placed before the subcommand, same as with lynis show or lynis configure:
+- Fully backwards compatible: existing `lynis audit system` behavior is unchanged when `--hardening` is not passed, and `apply`/`rollback` are new commands that don't touch the normal audit path.
+- No new external dependencies; everything runs in the same `/bin/sh`-compatible engine as upstream Lynis.
+- `backups/` and `history/` are runtime state created by `lynis apply` (git-ignored, not shipped).
 
-./lynis --no-colors audit system --hardening
-Lynis is a security auditing tool for systems based on UNIX like Linux, macOS, BSD, and others. It performs an in-depth security scan and runs on the system itself. The primary goal is to test security defenses and provide tips for further system hardening. It will also scan for general system information, vulnerable software packages, and possible configuration issues. Lynis was commonly used by system administrators and auditors to assess the security defenses of their systems. Besides the "blue team," nowadays penetration testers also have Lynis in their toolkit.
+## Known limitations / roadmap
 
-We believe software should be simple, updated on a regular basis, and open. You should be able to trust, understand, and have the option to change the software. Many agree with us, as the software is being used by thousands every day to protect their systems.
+- History/snapshot comparison across audits (`lynis compare`) is not yet implemented.
+- Fix coverage for the remaining L1 controls, and any L2 remediation, is intentionally out of scope until the associated risk can be scoped down control-by-control.
+- See `NEW_FEATURES_4_0.MD` for a more detailed walkthrough of each engine and how to use it.

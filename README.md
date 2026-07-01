@@ -17,9 +17,9 @@ Do you like this software? **Star the project** and become a [stargazer](https:/
 
 ## lynis-plus (this fork)
 
-This repository is **lynis-plus**, a fork of upstream Lynis, currently at **version 4.0**. It adds a CIS Benchmark compliance, hardening-report, and guided remediation layer on top of the standard Lynis audit engine. See [`RELEASE_NOTES_4_0.md`](RELEASE_NOTES_4_0.md) and [`NEW_FEATURES_4_0.MD`](NEW_FEATURES_4_0.MD) for details.
+This repository is **lynis-plus**, a fork of upstream Lynis, currently at **version 4.0.1**. It adds a CIS Benchmark compliance, hardening-report, and guided remediation layer on top of the standard Lynis audit engine. See [`RELEASE_NOTES_4_0_1.md`](RELEASE_NOTES_4_0_1.md) and [`NEW_FEATURES_4_0.MD`](NEW_FEATURES_4_0.MD) for details.
 
-### Contributions in 4.0
+### Contributions in 4.0 / 4.0.1
 
 - CIS Benchmark compliance scoring engine (`include/compliance`), scoring Lynis test results against CIS controls per category and per CIS Level (L1/L2).
 - CIS rule catalog (`include/rules_cis/`) covering Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, and Rocky Linux 9 (L1 + L2), with every mapped `test-no` validated against real Lynis tests.
@@ -28,7 +28,7 @@ This repository is **lynis-plus**, a fork of upstream Lynis, currently at **vers
 - Backup Engine (`include/backup`) — timestamped snapshot of any file before it's modified, tracked in a plain-text manifest.
 - Remediation Engine (`include/remediation`) — applies a single CIS control fix with mandatory human approval, then auto-verifies and auto-rolls-back on failure.
 - Rollback Engine (`include/rollback`) — restores a file to its last backed-up state, on demand or automatically.
-- New `lynis apply` / `lynis rollback` commands, with fix/verify metadata currently shipped for `SSH-001` (disable root login) and `AUTH-005` (default umask) across all 5 supported distros; every other control reports "no automated fix available yet" instead of guessing.
+- New `lynis apply` / `lynis rollback` commands, with fix/verify metadata now shipped for 11-16 controls per distro (up from 2) — see the fix coverage table below.
 
 ### Usage guide
 
