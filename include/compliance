@@ -1,0 +1,234 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+#################################################################################
+#
+# Compliance Engine (CIS Benchmark mapping)
+#
+# Cross-references Lynis test IDs against include/rules_cis/<distro>.rules to
+# compute a CIS adherence score. Level 1 rules always run when --hardening is
+# used; Level 2 rules (from the companion <distro>-l2.rules file) only load
+# when --hardening-l2 is used, and are scored separately (cis_score_l2),
+# never mixed into the L1 score.
+#
+# Status per rule:
+#   - SKIP if the underlying Lynis test never ran (TESTS_SKIPPED, set by
+#     Register() - e.g. wrong OS, missing prerequisite). Excluded from score.
+#   - FAIL if the test has a warning[] or suggestion[] entry in REPORTFILE.
+#   - PASS otherwise (test ran, nothing was reported against it).
+#
+#################################################################################
+#
+    CIS_RULES_DIR="${INCLUDEDIR}/rules_cis"
+    CIS_RULES_FILE=""
+    CIS_RULES_FILE_L2=""
+
+    # Name        : ComplianceSelectRulesFile()
+    # Description : Map detected OS to CIS rules files. Sets CIS_RULES_FILE
+    #               (L1) and CIS_RULES_FILE_L2 (L2, may stay empty).
+    ComplianceSelectRulesFile() {
+        CIS_FILE_ID=""
+        case "${LINUX_VERSION}" in
+            "Ubuntu")
+                case "${OS_VERSION}" in
+                    22.04*) CIS_FILE_ID="ubuntu2204" ;;
+                    24.04*) CIS_FILE_ID="ubuntu2404" ;;
+                esac
+            ;;
+            "Rocky Linux") CIS_FILE_ID="rocky9" ;;
+            "RHEL") CIS_FILE_ID="rhel9" ;;
+            "Oracle Linux") CIS_FILE_ID="oracle9" ;;
+        esac
+
+        if [ -n "${CIS_FILE_ID}" ] && [ -f "${CIS_RULES_DIR}/${CIS_FILE_ID}.rules" ]; then
+            CIS_RULES_FILE="${CIS_RULES_DIR}/${CIS_FILE_ID}.rules"
+        fi
+        if [ -n "${CIS_FILE_ID}" ] && [ -f "${CIS_RULES_DIR}/${CIS_FILE_ID}-l2.rules" ]; then
+            CIS_RULES_FILE_L2="${CIS_RULES_DIR}/${CIS_FILE_ID}-l2.rules"
+        fi
+    }
+
+    # Name        : ComplianceTestSkipped()
+    # Description : True if $1 (test-no) never ran (Register() skipped it).
+    #               TESTS_SKIPPED is an in-memory pipe-delimited list built by
+    #               Register(); compliance runs in the same shell (sourced),
+    #               so it is still available here without touching REPORTFILE.
+    ComplianceTestSkipped() {
+        case "|${TESTS_SKIPPED}" in
+            *"|${1}|"*) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+
+    # Name        : ComplianceTestFailed()
+    # Description : True if $1 (test-no) has a warning[] or suggestion[]
+    #               entry in the current REPORTFILE.
+    ComplianceTestFailed() {
+        if [ ! -f "${REPORTFILE}" ]; then return 1; fi
+        grep -q -E "^(warning|suggestion)\[\]=${1}\|" "${REPORTFILE}" 2> /dev/null
+    }
+
+    # Name        : ComplianceFlushRule()
+    # Description : Evaluate and report the currently accumulated rule block
+    #               (RULE_ID/RULE_TESTNO/...). Called when a new [ID] header
+    #               is seen and on EOF, so a rule block is order-independent
+    #               and doesn't require any specific field to be last.
+    #               Tallies go into the L1 or L2 counters based on RULE_LEVEL.
+    ComplianceFlushRule() {
+        if [ -z "${RULE_ID}" ] || [ -z "${RULE_TESTNO}" ]; then return; fi
+        RULE_LEVEL="${RULE_LEVEL:-L1}"
+
+        if ComplianceTestSkipped "${RULE_TESTNO}"; then
+            RULE_STATUS="SKIP"
+        elif ComplianceTestFailed "${RULE_TESTNO}"; then
+            RULE_STATUS="FAIL"
+        else
+            RULE_STATUS="PASS"
+        fi
+
+        if [ ! "${RULE_STATUS}" = "SKIP" ]; then
+            if [ "${RULE_LEVEL}" = "L2" ]; then
+                CIS_TOTAL_L2=$((CIS_TOTAL_L2 + 1))
+                if [ "${RULE_STATUS}" = "PASS" ]; then CIS_PASSED_L2=$((CIS_PASSED_L2 + 1)); fi
+                echo "${RULE_CATEGORY:-uncategorized}" >> "${CIS_CATEGORY_FILE}.total.L2"
+                if [ "${RULE_STATUS}" = "PASS" ]; then echo "${RULE_CATEGORY:-uncategorized}" >> "${CIS_CATEGORY_FILE}.pass.L2"; fi
+            else
+                CIS_TOTAL_L1=$((CIS_TOTAL_L1 + 1))
+                if [ "${RULE_STATUS}" = "PASS" ]; then CIS_PASSED_L1=$((CIS_PASSED_L1 + 1)); fi
+                echo "${RULE_CATEGORY:-uncategorized}" >> "${CIS_CATEGORY_FILE}.total.L1"
+                if [ "${RULE_STATUS}" = "PASS" ]; then echo "${RULE_CATEGORY:-uncategorized}" >> "${CIS_CATEGORY_FILE}.pass.L1"; fi
+            fi
+        fi
+
+        Report "finding[]=${RULE_ID}|${RULE_TESTNO}|${RULE_CATEGORY}|${RULE_SEVERITY}|${RULE_TITLE}|CIS ${CIS_FILE_ID} ${RULE_SECTION}|${RULE_STATUS}|${RULE_LEVEL}|${RULE_MAPPING:-exact}|${RULE_NOTE}|"
+        LogText "Compliance: ${RULE_ID} (${RULE_TESTNO}) -> ${RULE_STATUS} [CIS ${RULE_SECTION}] [level:${RULE_LEVEL}] [mapping:${RULE_MAPPING:-exact}]"
+    }
+
+    # Name        : ComplianceParseFile()
+    # Description : Stream $1 line by line, accumulating rule blocks and
+    #               flushing each one via ComplianceFlushRule.
+    ComplianceParseFile() {
+        RULE_ID=""; RULE_TESTNO=""; RULE_TITLE=""; RULE_SECTION=""; RULE_SEVERITY=""; RULE_CATEGORY=""; RULE_LEVEL=""; RULE_MAPPING=""; RULE_NOTE=""
+
+        while IFS= read -r LINE || [ -n "${LINE}" ]; do
+            case "${LINE}" in
+                \#*|"") continue ;;
+                \[*\])
+                    # New rule header: flush whatever we accumulated so far
+                    ComplianceFlushRule
+                    RULE_ID=$(echo "${LINE}" | sed 's/^\[//;s/\]$//')
+                    RULE_TESTNO=""; RULE_TITLE=""; RULE_SECTION=""; RULE_SEVERITY=""; RULE_CATEGORY=""; RULE_LEVEL=""; RULE_MAPPING=""; RULE_NOTE=""
+                ;;
+                test-no=*) RULE_TESTNO="${LINE#test-no=}" ;;
+                title=*) RULE_TITLE="${LINE#title=}" ;;
+                section=*) RULE_SECTION="${LINE#section=}" ;;
+                severity=*) RULE_SEVERITY="${LINE#severity=}" ;;
+                category=*) RULE_CATEGORY="${LINE#category=}" ;;
+                level=*) RULE_LEVEL="${LINE#level=}" ;;
+                mapping=*) RULE_MAPPING="${LINE#mapping=}" ;;
+                note=*) RULE_NOTE="${LINE#note=}" ;;
+            esac
+        done < "$1"
+        # Flush the last rule block in the file (no trailing [ID] header follows it)
+        ComplianceFlushRule
+    }
+
+    # Name        : ComplianceShowLevelScore()
+    # Description : Print + report the score for one level (L1 or L2), plus
+    #               its per-category breakdown, given already-tallied counts.
+    ComplianceShowLevelScore() {
+        LEVEL_NAME="$1"; LEVEL_TOTAL="$2"; LEVEL_PASSED="$3"
+
+        if [ "${LEVEL_TOTAL}" -eq 0 ]; then return; fi
+
+        LEVEL_SCORE=$((LEVEL_PASSED * 100 / LEVEL_TOTAL))
+        if [ "${LEVEL_NAME}" = "L2" ]; then
+            Report "cis_score_l2=${LEVEL_SCORE}"
+            Report "cis_tests_l2_total=${LEVEL_TOTAL}"
+            Report "cis_tests_l2_passed=${LEVEL_PASSED}"
+        else
+            Report "cis_score_l1=${LEVEL_SCORE}"
+            Report "cis_tests_l1_total=${LEVEL_TOTAL}"
+            Report "cis_tests_l1_passed=${LEVEL_PASSED}"
+            # Kept for backwards compatibility with the Fase 1 report contract
+            Report "cis_score=${LEVEL_SCORE}"
+            Report "cis_tests_total=${LEVEL_TOTAL}"
+            Report "cis_tests_passed=${LEVEL_PASSED}"
+        fi
+
+        Display --indent 2 --text "- Overall score (${LEVEL_NAME})" --result "${LEVEL_SCORE}%" --color WHITE
+
+        if [ -f "${CIS_CATEGORY_FILE}.total.${LEVEL_NAME}" ]; then
+            for CAT in $(sort -u "${CIS_CATEGORY_FILE}.total.${LEVEL_NAME}"); do
+                CAT_TOTAL=$(grep -c "^${CAT}$" "${CIS_CATEGORY_FILE}.total.${LEVEL_NAME}")
+                CAT_PASS=0
+                if [ -f "${CIS_CATEGORY_FILE}.pass.${LEVEL_NAME}" ]; then
+                    CAT_PASS=$(grep -c "^${CAT}$" "${CIS_CATEGORY_FILE}.pass.${LEVEL_NAME}")
+                fi
+                CAT_SCORE=$((CAT_PASS * 100 / CAT_TOTAL))
+                Report "cis_category_score_${LEVEL_NAME}[]=${CAT}|${CAT_SCORE}|"
+                Display --indent 4 --text "- ${CAT}" --result "${CAT_SCORE}%" --color WHITE
+            done
+        fi
+    }
+
+    # Name        : ComplianceRun()
+    # Description : Parse CIS rules file(s), calculate score(s), write
+    #               finding[]= entries to the report, display summary.
+    ComplianceRun() {
+        ComplianceSelectRulesFile
+        if [ -z "${CIS_RULES_FILE}" ]; then
+            LogText "Compliance: no CIS rules file available for ${LINUX_VERSION} ${OS_VERSION}, skipping"
+            return
+        fi
+
+        CreateTempFile
+        CIS_CATEGORY_FILE="${TEMP_FILE}"
+
+        CIS_TOTAL_L1=0; CIS_PASSED_L1=0
+        CIS_TOTAL_L2=0; CIS_PASSED_L2=0
+
+        LogText "Compliance: using CIS rules file ${CIS_RULES_FILE}"
+        ComplianceParseFile "${CIS_RULES_FILE}"
+
+        if [ ${HARDENING_INCLUDE_L2} -eq 1 ]; then
+            if [ -n "${CIS_RULES_FILE_L2}" ]; then
+                LogText "Compliance: using CIS Level 2 rules file ${CIS_RULES_FILE_L2}"
+                ComplianceParseFile "${CIS_RULES_FILE_L2}"
+            else
+                LogText "Compliance: --hardening-l2 requested but no L2 rules file found for ${CIS_FILE_ID}"
+            fi
+        fi
+
+        if [ ${CIS_TOTAL_L1} -eq 0 ] && [ ${CIS_TOTAL_L2} -eq 0 ]; then
+            LogText "Compliance: no applicable rules parsed from ${CIS_RULES_FILE}"
+            rm -f "${CIS_CATEGORY_FILE}".total.* "${CIS_CATEGORY_FILE}".pass.*
+            return
+        fi
+
+        Report "cis_benchmark=${CIS_FILE_ID}"
+        Display --indent 0 --text "\n Compliance (CIS ${CIS_FILE_ID})" --color WHITE
+
+        ComplianceShowLevelScore "L1" "${CIS_TOTAL_L1}" "${CIS_PASSED_L1}"
+        if [ ${HARDENING_INCLUDE_L2} -eq 1 ]; then
+            ComplianceShowLevelScore "L2" "${CIS_TOTAL_L2}" "${CIS_PASSED_L2}"
+        fi
+
+        rm -f "${CIS_CATEGORY_FILE}".total.* "${CIS_CATEGORY_FILE}".pass.*
+    }
+
+    ComplianceRun

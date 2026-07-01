@@ -1,0 +1,205 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+#################################################################################
+#
+# Hardening Report Engine (HTML + Markdown)
+#
+# Reads the finding[]= and cis_*= entries the Compliance Engine already wrote
+# to REPORTFILE and renders two standalone, offline reports:
+#   <same dir as REPORTFILE>/lynis-hardening-report.html
+#   <same dir as REPORTFILE>/lynis-hardening-report.md
+#
+# Deliberately re-parses REPORTFILE instead of reusing compliance's internal
+# variables, so this engine stays decoupled and could later be re-run on its
+# own from a saved report.dat (e.g. a future "lynis report --hardening").
+#
+#################################################################################
+#
+    # Name        : HtmlEscape()
+    # Description : Escape &, < and > so rule text can't break the HTML output
+    HtmlEscape() {
+        echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+    }
+
+    # Name        : ReportHardeningCollect()
+    # Description : Stream REPORTFILE once, split finding[]= lines by level,
+    #               write them out as ready-to-use HTML/MD table rows.
+    ReportHardeningCollect() {
+        CIS_ROWS_HTML_L1="${TEMP_FILE}.rows.L1.html"
+        CIS_ROWS_MD_L1="${TEMP_FILE}.rows.L1.md"
+        CIS_ROWS_HTML_L2="${TEMP_FILE}.rows.L2.html"
+        CIS_ROWS_MD_L2="${TEMP_FILE}.rows.L2.md"
+        : > "${CIS_ROWS_HTML_L1}"; : > "${CIS_ROWS_MD_L1}"
+        : > "${CIS_ROWS_HTML_L2}"; : > "${CIS_ROWS_MD_L2}"
+
+        CIS_SCORE_L1=""; CIS_SCORE_L2=""; CIS_BENCHMARK=""
+
+        while IFS= read -r LINE || [ -n "${LINE}" ]; do
+            case "${LINE}" in
+                finding\[\]=*)
+                    FIELDS="${LINE#finding[]=}"
+                    OLDIFS="${IFS}"
+                    IFS='|'
+                    set -f
+                    set -- ${FIELDS}
+                    set +f
+                    IFS="${OLDIFS}"
+                    F_ID="$1"; F_TESTNO="$2"; F_CATEGORY="$3"; F_SEVERITY="$4"; F_TITLE="$5"
+                    F_SECTION="$6"; F_STATUS="$7"; F_LEVEL="$8"; F_MAPPING="$9"
+                    shift 9
+                    F_NOTE="$1"
+                    F_LEVEL="${F_LEVEL:-L1}"
+                    F_MAPPING="${F_MAPPING:-exact}"
+
+                    STATUS_CLASS=$(echo "${F_STATUS}" | tr '[:upper:]' '[:lower:]')
+                    HTML_TITLE=$(HtmlEscape "${F_TITLE}")
+                    HTML_NOTE=""
+                    if [ "${F_MAPPING}" = "approx" ] && [ -n "${F_NOTE}" ]; then
+                        HTML_NOTE=" <span class=\"note\">($(HtmlEscape "${F_NOTE}"))</span>"
+                    fi
+
+                    ROW_HTML="<tr class=\"status-${STATUS_CLASS}\"><td>${F_ID}</td><td>${F_SECTION}</td><td>${HTML_TITLE}${HTML_NOTE}</td><td>${F_TESTNO}</td><td>${F_SEVERITY}</td><td>${F_STATUS}</td><td>${F_MAPPING}</td></tr>"
+                    ROW_MD="| ${F_ID} | ${F_SECTION} | ${F_TITLE}${F_NOTE:+ (${F_NOTE})} | ${F_TESTNO} | ${F_SEVERITY} | ${F_STATUS} | ${F_MAPPING} |"
+
+                    if [ "${F_LEVEL}" = "L2" ]; then
+                        echo "${ROW_HTML}" >> "${CIS_ROWS_HTML_L2}"
+                        echo "${ROW_MD}" >> "${CIS_ROWS_MD_L2}"
+                    else
+                        echo "${ROW_HTML}" >> "${CIS_ROWS_HTML_L1}"
+                        echo "${ROW_MD}" >> "${CIS_ROWS_MD_L1}"
+                    fi
+                ;;
+                cis_benchmark=*) CIS_BENCHMARK="${LINE#cis_benchmark=}" ;;
+                cis_score_l1=*) CIS_SCORE_L1="${LINE#cis_score_l1=}" ;;
+                cis_score_l2=*) CIS_SCORE_L2="${LINE#cis_score_l2=}" ;;
+            esac
+        done < "${REPORTFILE}"
+    }
+
+    # Name        : ReportHardeningWriteHtml()
+    # Description : Assemble the final standalone HTML dashboard.
+    ReportHardeningWriteHtml() {
+        OUT="$1"
+
+        {
+            echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            echo "<title>Hardening Report - $(HtmlEscape "${HOSTNAME}")</title>"
+            echo "<style>"
+            echo "body{font-family:Arial,Helvetica,sans-serif;background:#0f1720;color:#dbe2ef;margin:0;padding:24px}"
+            echo "h1{color:#fff} h2{border-bottom:1px solid #2a3b4d;padding-bottom:6px}"
+            echo ".meta{color:#8a97a8;margin-bottom:24px}"
+            echo ".score{font-size:2.2em;font-weight:bold}"
+            echo ".score.good{color:#4caf50}.score.warn{color:#ffb300}.score.bad{color:#f44336}"
+            echo "table{border-collapse:collapse;width:100%;margin-bottom:32px;font-size:0.9em}"
+            echo "th,td{border:1px solid #2a3b4d;padding:6px 10px;text-align:left}"
+            echo "th{background:#182531}"
+            echo "tr.status-pass{background:rgba(76,175,80,0.08)}"
+            echo "tr.status-fail{background:rgba(244,67,54,0.10)}"
+            echo "tr.status-skip{background:rgba(138,151,168,0.08);color:#8a97a8}"
+            echo ".note{color:#8a97a8;font-style:italic;font-size:0.85em}"
+            echo ".l2-banner{background:#2a2110;border:1px solid #6b5b1f;color:#e0c869;padding:10px 14px;margin-bottom:16px;border-radius:4px}"
+            echo "</style></head><body>"
+            echo "<h1>Hardening Report</h1>"
+            echo "<div class=\"meta\">Host: $(HtmlEscape "${HOSTNAME}") &middot; OS: $(HtmlEscape "${OS_FULLNAME:-${OS_NAME} ${OS_VERSION}}") &middot; CIS Benchmark: $(HtmlEscape "${CIS_BENCHMARK}") &middot; Generated: $(date "+%F %H:%M:%S")</div>"
+
+            echo "<h2>Level 1 - Score: <span class=\"score $(ReportHardeningScoreClass "${CIS_SCORE_L1}")\">${CIS_SCORE_L1:-n/a}%</span></h2>"
+            echo "<table><tr><th>ID</th><th>CIS Section</th><th>Control</th><th>Lynis Test</th><th>Severity</th><th>Status</th><th>Mapping</th></tr>"
+            cat "${CIS_ROWS_HTML_L1}"
+            echo "</table>"
+
+            if [ -n "${CIS_SCORE_L2}" ]; then
+                echo "<div class=\"l2-banner\">Level 2 controls are audit-only: no automated remediation is planned for them (higher risk of breaking things - separate partitions, dropping outgoing traffic, etc). Use this section to prioritize manual hardening work.</div>"
+                echo "<h2>Level 2 - Score: <span class=\"score $(ReportHardeningScoreClass "${CIS_SCORE_L2}")\">${CIS_SCORE_L2}%</span></h2>"
+                echo "<table><tr><th>ID</th><th>CIS Section</th><th>Control</th><th>Lynis Test</th><th>Severity</th><th>Status</th><th>Mapping</th></tr>"
+                cat "${CIS_ROWS_HTML_L2}"
+                echo "</table>"
+            fi
+
+            echo "</body></html>"
+        } > "${OUT}"
+    }
+
+    # Name        : ReportHardeningScoreClass()
+    # Description : Map a numeric score to a CSS class (good/warn/bad)
+    ReportHardeningScoreClass() {
+        SCORE_VALUE="${1:-0}"
+        if [ -z "${SCORE_VALUE}" ]; then SCORE_VALUE=0; fi
+        if [ "${SCORE_VALUE}" -ge 80 ]; then echo "good";
+        elif [ "${SCORE_VALUE}" -ge 50 ]; then echo "warn";
+        else echo "bad"; fi
+    }
+
+    # Name        : ReportHardeningWriteMd()
+    # Description : Assemble the final Markdown report.
+    ReportHardeningWriteMd() {
+        OUT="$1"
+
+        {
+            echo "# Hardening Report"
+            echo ""
+            echo "- Host: ${HOSTNAME}"
+            echo "- OS: ${OS_FULLNAME:-${OS_NAME} ${OS_VERSION}}"
+            echo "- CIS Benchmark: ${CIS_BENCHMARK}"
+            echo "- Generated: $(date "+%F %H:%M:%S")"
+            echo ""
+            echo "## Level 1 - Score: ${CIS_SCORE_L1:-n/a}%"
+            echo ""
+            echo "| ID | CIS Section | Control | Lynis Test | Severity | Status | Mapping |"
+            echo "|---|---|---|---|---|---|---|"
+            cat "${CIS_ROWS_MD_L1}"
+
+            if [ -n "${CIS_SCORE_L2}" ]; then
+                echo ""
+                echo "## Level 2 - Score: ${CIS_SCORE_L2}%"
+                echo ""
+                echo "> Level 2 controls are audit-only: no automated remediation is planned for them."
+                echo ""
+                echo "| ID | CIS Section | Control | Lynis Test | Severity | Status | Mapping |"
+                echo "|---|---|---|---|---|---|---|"
+                cat "${CIS_ROWS_MD_L2}"
+            fi
+        } > "${OUT}"
+    }
+
+    # Name        : ReportHardeningRun()
+    # Description : Entry point - collect data, render both formats, log paths.
+    ReportHardeningRun() {
+        if [ ! -f "${REPORTFILE}" ]; then
+            LogText "Hardening report: no REPORTFILE found, skipping"
+            return
+        fi
+
+        CreateTempFile
+        ReportHardeningCollect
+
+        REPORT_DIR=$(dirname "${REPORTFILE}")
+        HTML_OUT="${REPORT_DIR}/lynis-hardening-report.html"
+        MD_OUT="${REPORT_DIR}/lynis-hardening-report.md"
+
+        ReportHardeningWriteHtml "${HTML_OUT}"
+        ReportHardeningWriteMd "${MD_OUT}"
+
+        LogText "Hardening report: HTML written to ${HTML_OUT}"
+        LogText "Hardening report: Markdown written to ${MD_OUT}"
+        Display --indent 2 --text "- HTML report" --result "${HTML_OUT}" --color WHITE
+        Display --indent 2 --text "- Markdown report" --result "${MD_OUT}" --color WHITE
+
+        rm -f "${CIS_ROWS_HTML_L1}" "${CIS_ROWS_MD_L1}" "${CIS_ROWS_HTML_L2}" "${CIS_ROWS_MD_L2}"
+    }
+
+    ReportHardeningRun

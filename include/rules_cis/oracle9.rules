@@ -1,0 +1,212 @@
+#################################################################################
+#
+# CIS Benchmark mapping - Oracle Linux 9 - LEVEL 1
+# Source: CIS_Oracle_Linux_9_Benchmark_v2.0.0.pdf (Level 1 only)
+#
+# Same format as ubuntu2404.rules - see that file for field documentation.
+# Section numbers verified against this benchmark's real table of contents;
+# they differ from the Ubuntu 24.04 file in several places even for the same
+# control (e.g. root UID 0 is 5.4.2.1 in both, but duplicate GID/user checks
+# are numbered differently) - do not copy Ubuntu section numbers here.
+#
+#################################################################################
+
+[SSH-001]
+test-no=SSH-7408
+title=Ensure sshd PermitRootLogin is disabled
+section=5.1.20
+severity=High
+category=security
+level=L1
+mapping=exact
+
+[SSH-002]
+test-no=SSH-7440
+title=Ensure sshd access is configured
+section=5.1.7
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[AUTH-001]
+test-no=AUTH-9204
+title=Ensure root is the only UID 0 account
+section=5.4.2.1
+severity=High
+category=security
+level=L1
+mapping=exact
+
+[AUTH-002]
+test-no=AUTH-9208
+title=Ensure no duplicate user names exist
+section=7.2.6
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[AUTH-003]
+test-no=AUTH-9222
+title=Ensure no duplicate GIDs exist
+section=7.2.5
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[AUTH-004]
+test-no=AUTH-9226
+title=Ensure no duplicate group names exist
+section=7.2.7
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[AUTH-005]
+test-no=AUTH-9328
+title=Ensure default user umask is configured
+section=5.4.3.3
+severity=Low
+category=security
+level=L1
+mapping=exact
+
+[AUTH-006]
+test-no=AUTH-9262
+title=Ensure pam_pwquality module is enabled
+section=5.3.2.3
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis checks presence of password strength testing tools in general (PAM), CIS control specifically requires the pam_pwquality module
+
+[AUTH-007]
+test-no=AUTH-9286
+title=Ensure password expiration is configured
+section=5.4.1.1
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis checks general user password aging, CIS control specifies the exact PASS_MAX_DAYS threshold
+
+[KRNL-001]
+test-no=KRNL-5820
+title=Ensure core dump storage is disabled
+section=1.5.4
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis test checks core dump related sysctl/config broadly (fs.suid_dumpable and similar), CIS control is specifically about systemd-coredump storage configuration
+
+[KRNL-002]
+test-no=KRNL-6000
+title=Ensure ip forwarding is disabled
+section=3.3.1
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Generic sysctl key/value checker driven by the scan profile, not a dedicated net.ipv4.ip_forward test
+
+[KRNL-003]
+test-no=KRNL-6000
+title=Ensure tcp syn cookies is enabled
+section=3.3.10
+severity=Low
+category=security
+level=L1
+mapping=approx
+note=Same generic sysctl checker as KRNL-002, applied to a different sysctl key
+
+[MACF-001]
+test-no=MACF-6232
+title=Ensure SELinux is installed
+section=1.3.1.1
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[MACF-002]
+test-no=MACF-6234
+title=Ensure the SELinux mode is not disabled
+section=1.3.1.4
+severity=High
+category=security
+level=L1
+mapping=approx
+note=Lynis test reports enabled/disabled status and current mode, but only raises a warning when the running mode differs from the config file - it doesn't fail specifically when mode is "disabled"
+
+[SCHD-001]
+test-no=SCHD-7702
+title=Ensure cron daemon is enabled and active
+section=2.4.1.1
+severity=Low
+category=security
+level=L1
+mapping=exact
+
+[SCHD-002]
+test-no=SCHD-7718
+title=Ensure at is restricted to authorized users
+section=2.4.2.1
+severity=Low
+category=security
+level=L1
+mapping=approx
+note=Lynis checks presence/listing of at users, CIS control specifically checks file permissions on the at.allow/at.deny access files
+
+[LOGG-001]
+test-no=LOGG-2230
+title=Ensure rsyslog is installed
+section=6.2.3.1
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis test detects a running RSyslog daemon; CIS control is specifically about the package being installed (broader intent, same tool)
+
+[LOGG-002]
+test-no=LOGG-2136
+title=Ensure journald service is enabled and active
+section=6.2.1.1
+severity=Medium
+category=security
+level=L1
+mapping=exact
+
+[FIRE-001]
+test-no=FIRE-4536
+title=Ensure nftables is installed
+section=4.1.1
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis test checks nftables running status broadly, CIS control is specifically about package installation state
+
+[FIRE-002]
+test-no=FIRE-4538
+title=Ensure nftables base chains exist
+section=4.3.1
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis test checks basic nftables configuration in general, not specifically the existence of the required base chains
+
+[FIRE-003]
+test-no=FIRE-4540
+title=Ensure nftables default deny firewall policy
+section=4.3.3
+severity=Medium
+category=security
+level=L1
+mapping=approx
+note=Lynis test only detects an empty/near-empty nftables ruleset, doesn't verify the base chain policy is explicitly set to drop/reject

@@ -288,6 +288,17 @@
                 PENTESTINGMODE=1
             ;;
 
+            # Enable CIS compliance scoring after the audit
+            --hardening)
+                HARDENING_MODE=1
+            ;;
+
+            # Also load CIS Level 2 rules (audit-only, scored separately from L1)
+            --hardening-l2)
+                HARDENING_MODE=1
+                HARDENING_INCLUDE_L2=1
+            ;;
+
             # Define a custom profile file
             --profile)
                 if [ $# -gt 1 ]; then

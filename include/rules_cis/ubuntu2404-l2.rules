@@ -1,0 +1,131 @@
+#################################################################################
+#
+# CIS Benchmark mapping - Ubuntu 24.04 LTS - LEVEL 2
+# Source: CIS_Ubuntu_Linux_24.04_LTS_Benchmark_v2.0.0.pdf (Level 2 controls only)
+#
+# Same format as ubuntu2404.rules - see that file for field documentation.
+#
+# Loaded only when the audit runs with --hardening-l2. Kept in a separate
+# file (not merged into the L1 file) because:
+#   - L2 controls are stricter/riskier to remediate (separate partitions,
+#     dropping outgoing firewall traffic by default, etc) - remediation
+#     (Fase 3) is scoped to L1 only, so L2 stays audit/informational.
+#   - Score is reported separately (cis_score_l1 vs cis_score_l2) so an L1
+#     score isn't silently diluted by L2 findings.
+#
+# None of these mappings are mapping=exact: the underlying Lynis tests are
+# broader/generic checks that overlap the CIS control's intent without
+# verifying the exact same setting - review the CIS Benchmark text before
+# treating a PASS here as a compliance guarantee.
+#
+#################################################################################
+
+[FILE-L2-001]
+test-no=FILE-6310
+title=Ensure separate partition exists for /home
+section=1.1.2.3.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks whether /tmp, /home and /var are recognized directories/mounts in general, not specifically whether /home is on its own partition
+
+[FILE-L2-002]
+test-no=FILE-6310
+title=Ensure separate partition exists for /var
+section=1.1.2.4.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Same generic mount check as FILE-L2-001, applied to /var
+
+[MACF-L2-001]
+test-no=MACF-6208
+title=Ensure all AppArmor Profiles are enforcing
+section=1.3.1.3
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks whether AppArmor itself is enabled, not whether every individual profile is in enforce mode
+
+[KRNL-L2-001]
+test-no=KRNL-6000
+title=Ensure fs.protected_symlinks is configured
+section=1.5.2
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Generic sysctl key/value checker driven by the scan profile, not a dedicated protected_symlinks test
+
+[FIRE-L2-001]
+test-no=FIRE-4590
+title=Ensure ufw outgoing default is configured
+section=4.1.4
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test only detects whether a firewall is active in general, not the specific outgoing default policy
+
+[SSH-L2-001]
+test-no=SSH-7408
+title=Ensure sshd ListenAddress is configured
+section=5.1.24
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks several sshd_config options generically; ListenAddress isn't verified as an individual, dedicated check
+
+[SHLL-L2-001]
+test-no=SHLL-6211
+title=Ensure nologin is not listed in /etc/shells
+section=5.4.3.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test validates the general list of available/valid shells, not specifically the absence of nologin
+
+[AUDT-L2-001]
+test-no=ACCT-9628
+title=Ensure auditd packages are installed
+section=6.2.1.1
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks for the presence of auditd broadly (package or running daemon), not specifically package installation state
+
+[AUDT-L2-002]
+test-no=ACCT-9630
+title=Ensure auditd service is enabled and active
+section=6.2.1.2
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks whether auditd rules exist, which implies the service is configured, but doesn't directly verify enabled+active service state
+
+[AUDT-L2-003]
+test-no=ACCT-9632
+title=Ensure audit log storage size is configured
+section=6.2.2.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks for the presence of the auditd configuration file, not the specific max_log_file setting inside it
+
+[AUDT-L2-004]
+test-no=ACCT-9634
+title=Ensure audit log files mode is configured
+section=6.2.4.2
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks for the presence of the audit log file, not its file mode/permissions

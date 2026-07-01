@@ -15,6 +15,17 @@ Do you like this software? **Star the project** and become a [stargazer](https:/
 
 > Lynis - Security auditing and hardening tool, for UNIX-based systems.
 
+## lynis-plus (this fork)
+
+This repository is **lynis-plus**, a fork of upstream Lynis, currently at **version 4.0**. It adds a CIS Benchmark compliance and hardening-report layer on top of the standard Lynis audit engine. See [`RELEASE_NOTES_4_0.md`](RELEASE_NOTES_4_0.md) and [`NEW_FEATURES_4_0.MD`](NEW_FEATURES_4_0.MD) for details.
+
+### Contributions in 4.0
+
+- CIS Benchmark compliance scoring engine (`include/compliance`), scoring Lynis test results against CIS controls per category and per CIS Level (L1/L2).
+- CIS rule catalog (`include/rules_cis/`) covering Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, and Rocky Linux 9 (L1 + L2), with every mapped `test-no` validated against real Lynis tests.
+- Offline HTML/Markdown hardening dashboard generator (`include/report_hardening`).
+- New `--hardening` / `--hardening-l2` CLI flags, fully opt-in and backwards compatible with the standard `lynis audit system` flow.
+
 Lynis is a security auditing tool for systems based on UNIX like Linux, macOS, BSD, and others. It performs an **in-depth security scan** and runs on the system itself. The primary goal is to test security defenses and **provide tips for further system hardening**. It will also scan for general system information, vulnerable software packages, and possible configuration issues. Lynis was commonly used by system administrators and auditors to assess the security defenses of their systems. Besides the "blue team," nowadays penetration testers also have Lynis in their toolkit.
 
 We believe software should be **simple**, **updated on a regular basis**, and **open**. You should be able to trust, understand, and have the option to change the software. Many agree with us, as the software is being used by thousands every day to protect their systems.

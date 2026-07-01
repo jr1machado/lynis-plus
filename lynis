@@ -1125,6 +1125,12 @@ ${NORMAL}
     CDATE=$(date "+%F %H:%M:%S")
     Report "report_datetime_end=${CDATE}"
 
+    # Run CIS compliance scoring (opt-in via --hardening)
+    if [ ${HARDENING_MODE} -eq 1 ] && [ ${RUN_TESTS} -eq 1 ]; then
+        if [ -f ${INCLUDEDIR}/compliance ]; then SafePerms ${INCLUDEDIR}/compliance; . ${INCLUDEDIR}/compliance; fi
+        if [ -f ${INCLUDEDIR}/report_hardening ]; then SafePerms ${INCLUDEDIR}/report_hardening; . ${INCLUDEDIR}/report_hardening; fi
+    fi
+
     # Show report
     if [ -f ${INCLUDEDIR}/report ]; then SafePerms ${INCLUDEDIR}/report; . ${INCLUDEDIR}/report; fi
 

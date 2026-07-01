@@ -1,0 +1,100 @@
+#################################################################################
+#
+# CIS Benchmark mapping - Ubuntu 22.04 LTS - LEVEL 2
+# Source: CIS_Ubuntu_Linux_22.04_LTS_Benchmark_v3.0.0.pdf (Level 2 only)
+#
+# Same format as ubuntu2404.rules - see that file for field documentation.
+# Loaded only with --hardening-l2, scored separately from L1 (see
+# ubuntu2204.rules and include/compliance).
+#
+#################################################################################
+
+[FILE-L2-001]
+test-no=FILE-6310
+title=Ensure separate partition exists for /home
+section=1.1.2.3.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks whether /tmp, /home and /var are recognized directories/mounts in general, not specifically whether /home is on its own partition
+
+[FILE-L2-002]
+test-no=FILE-6310
+title=Ensure separate partition exists for /var
+section=1.1.2.4.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Same generic mount check as FILE-L2-001, applied to /var
+
+[MACF-L2-001]
+test-no=MACF-6208
+title=Ensure all AppArmor Profiles are enforcing
+section=1.3.1.4
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks whether AppArmor itself is enabled, not whether every individual profile is in enforce mode
+
+[FIRE-L2-001]
+test-no=FIRE-4590
+title=Ensure ufw outgoing default is configured
+section=4.1.4
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test only detects whether a firewall is active in general, not the specific outgoing default policy
+
+[SHLL-L2-001]
+test-no=SHLL-6211
+title=Ensure nologin is not listed in /etc/shells
+section=5.4.3.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test validates the general list of available/valid shells, not specifically the absence of nologin
+
+[AUDT-L2-001]
+test-no=ACCT-9628
+title=Ensure auditd packages are installed
+section=6.2.1.1
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks for the presence of auditd broadly (package or running daemon), not specifically package installation state
+
+[AUDT-L2-002]
+test-no=ACCT-9630
+title=Ensure auditd service is enabled and active
+section=6.2.1.2
+severity=Medium
+category=security
+level=L2
+mapping=approx
+note=Lynis test checks whether auditd rules exist, which implies the service is configured, but doesn't directly verify enabled+active service state
+
+[AUDT-L2-003]
+test-no=ACCT-9632
+title=Ensure audit log storage size is configured
+section=6.2.2.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks for the presence of the auditd configuration file, not the specific max_log_file setting inside it
+
+[AUDT-L2-004]
+test-no=ACCT-9634
+title=Ensure audit log files mode is configured
+section=6.2.4.1
+severity=Low
+category=security
+level=L2
+mapping=approx
+note=Lynis test only checks for the presence of the audit log file, not its file mode/permissions
