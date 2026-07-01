@@ -1,0 +1,55 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+######################################################################
+#
+# Helper program to apply a single CIS control fix
+#
+######################################################################
+#
+# How to use:
+# ------------
+# lynis apply --test-no <ID> [--dry-run]
+#
+######################################################################
+
+    APPLY_TESTNO=""
+    APPLY_DRYRUN=0
+
+    while [ $# -ge 1 ]; do
+        case $1 in
+            --test-no)
+                shift
+                APPLY_TESTNO="$1"
+            ;;
+            --dry-run)
+                APPLY_DRYRUN=1
+            ;;
+            *)
+                echo "${RED}Error${NORMAL}: unknown argument '$1' for lynis apply"
+                ExitFatal
+            ;;
+        esac
+        shift
+    done
+
+    if [ -f "${INCLUDEDIR}/backup" ]; then SafePerms "${INCLUDEDIR}/backup"; . "${INCLUDEDIR}/backup"; fi
+    if [ -f "${INCLUDEDIR}/rollback" ]; then SafePerms "${INCLUDEDIR}/rollback"; . "${INCLUDEDIR}/rollback"; fi
+    if [ -f "${INCLUDEDIR}/remediation" ]; then SafePerms "${INCLUDEDIR}/remediation"; . "${INCLUDEDIR}/remediation"; fi
+
+    RemediationRun "${APPLY_TESTNO}" "${APPLY_DRYRUN}"
+    ExitCustom $?

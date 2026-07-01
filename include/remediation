@@ -1,0 +1,198 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+#################################################################################
+#
+# Remediation Engine
+#
+# Applies a single CIS control fix, identified by --test-no or --rule-id,
+# always through: show impact -> explicit approval -> backup -> fix ->
+# verify -> automatic rollback on verify failure. Only CIS Level 1 rules are
+# ever remediated here - Level 2 rules (rules_cis/<distro>-l2.rules) are
+# audit-only by design and are never looked up by this engine.
+#
+# Requires include/backup and include/rollback to already be sourced.
+#
+#################################################################################
+#
+    REMEDIATION_LOG="${WORKDIR}/history/remediation.log"
+
+    # Name        : RemediationSelectRulesFile()
+    # Description : Map detected OS to its CIS Level 1 rules file. Mirrors
+    #               include/compliance's ComplianceSelectRulesFile(), kept as
+    #               its own copy so Remediation never accidentally loads the
+    #               L2 (audit-only) file.
+    RemediationSelectRulesFile() {
+        REM_FILE_ID=""
+        case "${LINUX_VERSION}" in
+            "Ubuntu")
+                case "${OS_VERSION}" in
+                    22.04*) REM_FILE_ID="ubuntu2204" ;;
+                    24.04*) REM_FILE_ID="ubuntu2404" ;;
+                esac
+            ;;
+            "Rocky Linux") REM_FILE_ID="rocky9" ;;
+            "RHEL") REM_FILE_ID="rhel9" ;;
+            "Oracle Linux") REM_FILE_ID="oracle9" ;;
+        esac
+
+        REM_RULES_FILE=""
+        if [ -n "${REM_FILE_ID}" ] && [ -f "${INCLUDEDIR}/rules_cis/${REM_FILE_ID}.rules" ]; then
+            REM_RULES_FILE="${INCLUDEDIR}/rules_cis/${REM_FILE_ID}.rules"
+        fi
+    }
+
+    # Name        : RemediationFindRule()
+    # Parameters  : $1 = rules file, $2 = target (matches [ID] header or test-no=)
+    # Description : Streams the file, sets REM_* globals for the first rule
+    #               block whose ID or test-no matches $2. REM_FOUND=1 if a
+    #               match was found.
+    RemediationFindRule() {
+        FIND_FILE="$1"
+        FIND_TARGET="$2"
+        REM_FOUND=0
+
+        CUR_ID=""; CUR_TESTNO=""; CUR_TITLE=""; CUR_SECTION=""; CUR_SEVERITY=""
+        CUR_BACKUP=""; CUR_FIXCMD=""; CUR_VERIFYCMD=""; CUR_POSTCMD=""
+
+        while IFS= read -r LINE || [ -n "${LINE}" ]; do
+            case "${LINE}" in
+                \#*|"") continue ;;
+                \[*\])
+                    if [ "${REM_FOUND}" -eq 0 ] && { [ "${CUR_ID}" = "${FIND_TARGET}" ] || [ "${CUR_TESTNO}" = "${FIND_TARGET}" ]; }; then
+                        REM_FOUND=1
+                        break
+                    fi
+                    CUR_ID=$(echo "${LINE}" | sed 's/^\[//;s/\]$//')
+                    CUR_TESTNO=""; CUR_TITLE=""; CUR_SECTION=""; CUR_SEVERITY=""
+                    CUR_BACKUP=""; CUR_FIXCMD=""; CUR_VERIFYCMD=""; CUR_POSTCMD=""
+                ;;
+                test-no=*) CUR_TESTNO="${LINE#test-no=}" ;;
+                title=*) CUR_TITLE="${LINE#title=}" ;;
+                section=*) CUR_SECTION="${LINE#section=}" ;;
+                severity=*) CUR_SEVERITY="${LINE#severity=}" ;;
+                backup-file=*) CUR_BACKUP="${LINE#backup-file=}" ;;
+                fix-cmd=*) CUR_FIXCMD="${LINE#fix-cmd=}" ;;
+                verify-cmd=*) CUR_VERIFYCMD="${LINE#verify-cmd=}" ;;
+                post-cmd=*) CUR_POSTCMD="${LINE#post-cmd=}" ;;
+            esac
+        done < "${FIND_FILE}"
+
+        if [ "${REM_FOUND}" -eq 0 ] && { [ "${CUR_ID}" = "${FIND_TARGET}" ] || [ "${CUR_TESTNO}" = "${FIND_TARGET}" ]; }; then
+            REM_FOUND=1
+        fi
+
+        REM_ID="${CUR_ID}"; REM_TESTNO="${CUR_TESTNO}"; REM_TITLE="${CUR_TITLE}"
+        REM_SECTION="${CUR_SECTION}"; REM_SEVERITY="${CUR_SEVERITY}"
+        REM_BACKUP="${CUR_BACKUP}"; REM_FIXCMD="${CUR_FIXCMD}"
+        REM_VERIFYCMD="${CUR_VERIFYCMD}"; REM_POSTCMD="${CUR_POSTCMD}"
+    }
+
+    # Name        : RemediationLog()
+    # Description : Append one line to the plain-text remediation history.
+    RemediationLog() {
+        mkdir -p "${WORKDIR}/history"
+        echo "$(date "+%Y-%m-%d %H:%M:%S")|${REM_ID}|${REM_TESTNO}|$1|${HOSTNAME}" >> "${REMEDIATION_LOG}"
+    }
+
+    # Name        : RemediationRun()
+    # Parameters  : $1 = target (test-no or rule id), $2 = "1" for --dry-run
+    RemediationRun() {
+        TARGET_ID="$1"
+        DRY_RUN="${2:-0}"
+
+        if [ -z "${TARGET_ID}" ]; then
+            echo "${RED}Error${NORMAL}: ${WHITE}--test-no <ID> is required${NORMAL}"
+            echo "Example: lynis apply --test-no SSH-7408"
+            return 64
+        fi
+
+        RemediationSelectRulesFile
+        if [ -z "${REM_RULES_FILE}" ]; then
+            echo "${RED}Error${NORMAL}: no CIS Level 1 rules file available for ${LINUX_VERSION} ${OS_VERSION}"
+            return 1
+        fi
+
+        RemediationFindRule "${REM_RULES_FILE}" "${TARGET_ID}"
+        if [ "${REM_FOUND}" -ne 1 ]; then
+            echo "${RED}Error${NORMAL}: no CIS Level 1 rule matches '${TARGET_ID}' in ${REM_RULES_FILE}"
+            return 1
+        fi
+
+        echo ""
+        echo "${WHITE}Rule${NORMAL}       : ${REM_ID} (${REM_TESTNO})"
+        echo "${WHITE}Title${NORMAL}      : ${REM_TITLE}"
+        echo "${WHITE}CIS section${NORMAL}: ${REM_SECTION}"
+        echo "${WHITE}Severity${NORMAL}   : ${REM_SEVERITY}"
+        echo "${WHITE}File${NORMAL}       : ${REM_BACKUP:-n/a}"
+        echo ""
+
+        if [ -z "${REM_FIXCMD}" ]; then
+            echo "${YELLOW}No automated fix is available for this control yet.${NORMAL}"
+            echo "Manual remediation required - see CIS section ${REM_SECTION}."
+            return 0
+        fi
+
+        printf "%s\n" "${WHITE}Fix command${NORMAL}   : ${REM_FIXCMD}"
+        printf "%s\n" "${WHITE}Verify command${NORMAL}: ${REM_VERIFYCMD}"
+        echo ""
+
+        if [ "${DRY_RUN}" -eq 1 ]; then
+            echo "${YELLOW}Dry run${NORMAL} - no backup, no changes made, nothing executed."
+            return 0
+        fi
+
+        printf "%s" "Apply this fix? [y/N] "
+        read -r ANSWER < /dev/tty 2> /dev/null || read -r ANSWER
+        case "${ANSWER}" in
+            y|Y|yes|YES) : ;;
+            *)
+                echo "Aborted, no changes made."
+                return 0
+            ;;
+        esac
+
+        if [ -n "${REM_BACKUP}" ]; then
+            BACKUP_PATH=$(BackupFile "${REM_ID}" "${REM_BACKUP}")
+            if [ $? -ne 0 ]; then
+                echo "${RED}Error${NORMAL}: could not back up ${REM_BACKUP}, aborting fix (no changes made)"
+                RemediationLog "ABORTED_NO_BACKUP"
+                return 1
+            fi
+            echo "Backup saved: ${BACKUP_PATH}"
+        fi
+
+        if ! sh -c "${REM_FIXCMD}"; then
+            echo "${RED}Fix command failed.${NORMAL}"
+            if [ -n "${REM_BACKUP}" ]; then RollbackFile "${REM_ID}" "${REM_BACKUP}"; fi
+            RemediationLog "FIX_FAILED"
+            return 1
+        fi
+
+        if [ -n "${REM_VERIFYCMD}" ] && ! sh -c "${REM_VERIFYCMD}"; then
+            echo "${RED}Verification failed after fix - rolling back automatically.${NORMAL}"
+            if [ -n "${REM_BACKUP}" ]; then RollbackFile "${REM_ID}" "${REM_BACKUP}"; fi
+            RemediationLog "VERIFY_FAILED_ROLLED_BACK"
+            return 1
+        fi
+
+        if [ -n "${REM_POSTCMD}" ]; then sh -c "${REM_POSTCMD}" 2> /dev/null; fi
+
+        echo "${GREEN}Fix applied and verified.${NORMAL}"
+        RemediationLog "APPLIED"
+        return 0
+    }

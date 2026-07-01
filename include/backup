@@ -1,0 +1,78 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+#################################################################################
+#
+# Backup Engine
+#
+# Snapshots a file before the Remediation Engine modifies it. Every backup is
+# recorded in a plain-text manifest so Rollback can find the most recent copy
+# for a given rule. Never overwrites a previous backup of the same file on the
+# same day - each call gets its own timestamped copy.
+#
+#################################################################################
+#
+    BACKUP_ROOT="${LYNIS_PLUS_BACKUP_DIR:-${WORKDIR}/backups}"
+    BACKUP_MANIFEST="${BACKUP_ROOT}/manifest.log"
+
+    # Name        : BackupFile()
+    # Parameters  : $1 = rule id (e.g. SSH-001), $2 = file to back up
+    # Returns     : 0 and prints the backup path on success, 1 if the source
+    #               file does not exist or could not be copied
+    BackupFile() {
+        BACKUP_RULE_ID="$1"
+        BACKUP_SOURCE="$2"
+
+        if [ -z "${BACKUP_SOURCE}" ] || [ ! -f "${BACKUP_SOURCE}" ]; then
+            LogText "Backup: source file '${BACKUP_SOURCE}' not found for rule ${BACKUP_RULE_ID}, skipping backup"
+            return 1
+        fi
+
+        BACKUP_DATE=$(date "+%Y-%m-%d")
+        BACKUP_DIR="${BACKUP_ROOT}/${BACKUP_DATE}"
+        mkdir -p "${BACKUP_DIR}"
+
+        BACKUP_STAMP=$(date "+%Y%m%d%H%M%S")
+        BACKUP_FLATNAME=$(echo "${BACKUP_SOURCE}" | sed 's/^\///; s/\//_/g')
+        BACKUP_DEST="${BACKUP_DIR}/${BACKUP_RULE_ID}.${BACKUP_FLATNAME}.${BACKUP_STAMP}.bak"
+
+        if ! cp -p "${BACKUP_SOURCE}" "${BACKUP_DEST}" 2> /dev/null; then
+            LogText "Backup: failed to copy '${BACKUP_SOURCE}' to '${BACKUP_DEST}'"
+            return 1
+        fi
+
+        BACKUP_CHECKSUM=$(sha256sum "${BACKUP_SOURCE}" 2> /dev/null | awk '{print $1}')
+        mkdir -p "${BACKUP_ROOT}"
+        echo "${BACKUP_STAMP}|${BACKUP_RULE_ID}|${BACKUP_SOURCE}|${BACKUP_DEST}|${BACKUP_CHECKSUM}|${HOSTNAME}" >> "${BACKUP_MANIFEST}"
+
+        LogText "Backup: ${BACKUP_SOURCE} -> ${BACKUP_DEST} (rule ${BACKUP_RULE_ID})"
+        echo "${BACKUP_DEST}"
+        return 0
+    }
+
+    # Name        : BackupFindLatest()
+    # Description : Look up the manifest for the most recent backup of $2
+    #               (source file path) made for rule $1. Echoes the backup
+    #               path, or nothing if none found.
+    BackupFindLatest() {
+        FIND_RULE_ID="$1"
+        FIND_SOURCE="$2"
+
+        if [ ! -f "${BACKUP_MANIFEST}" ]; then return 1; fi
+
+        grep -F "|${FIND_RULE_ID}|${FIND_SOURCE}|" "${BACKUP_MANIFEST}" 2> /dev/null | tail -n 1 | awk -F'|' '{print $4}'
+    }

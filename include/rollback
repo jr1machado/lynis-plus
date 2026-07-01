@@ -1,0 +1,48 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+#################################################################################
+#
+# Rollback Engine
+#
+# Restores a file to the state captured by the Backup Engine before a
+# Remediation fix was applied. Used both automatically (Remediation triggers
+# it when verify-cmd fails after a fix) and on demand via `lynis rollback`.
+#
+#################################################################################
+#
+    # Name        : RollbackFile()
+    # Parameters  : $1 = rule id, $2 = target file (the live file to restore)
+    # Returns     : 0 on success, 1 if no backup could be found or restore failed
+    RollbackFile() {
+        ROLLBACK_RULE_ID="$1"
+        ROLLBACK_TARGET="$2"
+
+        ROLLBACK_SOURCE=$(BackupFindLatest "${ROLLBACK_RULE_ID}" "${ROLLBACK_TARGET}")
+        if [ -z "${ROLLBACK_SOURCE}" ] || [ ! -f "${ROLLBACK_SOURCE}" ]; then
+            LogText "Rollback: no backup found for rule ${ROLLBACK_RULE_ID} (${ROLLBACK_TARGET})"
+            return 1
+        fi
+
+        if ! cp -p "${ROLLBACK_SOURCE}" "${ROLLBACK_TARGET}" 2> /dev/null; then
+            LogText "Rollback: failed to restore ${ROLLBACK_TARGET} from ${ROLLBACK_SOURCE}"
+            return 1
+        fi
+
+        LogText "Rollback: restored ${ROLLBACK_TARGET} from ${ROLLBACK_SOURCE} (rule ${ROLLBACK_RULE_ID})"
+        return 0
+    }

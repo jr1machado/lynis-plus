@@ -117,6 +117,32 @@
                 fi
             ;;
 
+            # Apply a single CIS control fix (backup + fix + verify, with approval)
+            apply)
+                CHECK_BINARIES=0
+                RUN_HELPERS=1
+                HELPER="apply"
+                SKIP_PLUGINS=1
+                RUN_TESTS=0
+                SHOW_PROGRAM_DETAILS=0
+                shift
+                HELPER_PARAMS="$@"
+                break
+            ;;
+
+            # Roll back a single CIS control fix to its last backup
+            rollback)
+                CHECK_BINARIES=0
+                RUN_HELPERS=1
+                HELPER="rollback"
+                SKIP_PLUGINS=1
+                RUN_TESTS=0
+                SHOW_PROGRAM_DETAILS=0
+                shift
+                HELPER_PARAMS="$@"
+                break
+            ;;
+
             # Configure Lynis
             configure)
                 CHECK_BINARIES=0

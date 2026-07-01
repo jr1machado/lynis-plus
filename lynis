@@ -433,6 +433,13 @@ ${YELLOW}Note: ${WHITE}Cancelling the program can leave temporary files behind${
     ${CYAN}update${NORMAL}
         update info                   : Show update details
 
+    ${CYAN}apply${NORMAL}
+        apply --test-no <ID>          : Apply a CIS control fix (approval required)
+        apply --test-no <ID> --dry-run: Preview a CIS control fix, no changes made
+
+    ${CYAN}rollback${NORMAL}
+        rollback --test-no <ID>       : Restore a CIS control's last backup
+
 
   ${WHITE}Options:${NORMAL}
 

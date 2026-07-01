@@ -36,6 +36,10 @@ severity=High
 category=security
 level=L1
 mapping=exact
+backup-file=/etc/ssh/sshd_config
+fix-cmd=grep -Eq '^[[:space:]]*PermitRootLogin' /etc/ssh/sshd_config && sed -i -E 's/^[[:space:]]*#?[[:space:]]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config
+verify-cmd=grep -Eq '^PermitRootLogin[[:space:]]+no' /etc/ssh/sshd_config
+post-cmd=sshd -t 2>/dev/null && (systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null) || true
 
 [SSH-002]
 test-no=SSH-7440
@@ -90,6 +94,9 @@ severity=Low
 category=security
 level=L1
 mapping=exact
+backup-file=/etc/profile
+fix-cmd=grep -Eq '^[[:space:]]*umask[[:space:]]+[0-9]+' /etc/profile && sed -i -E 's/^([[:space:]]*umask[[:space:]]+)[0-9]+/\1027/' /etc/profile || echo 'umask 027' >> /etc/profile
+verify-cmd=grep -Eq '^[[:space:]]*umask[[:space:]]+(077|027|0077|0027)([^0-9]|$)' /etc/profile
 
 [AUTH-006]
 test-no=AUTH-9262

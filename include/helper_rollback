@@ -1,0 +1,80 @@
+#!/bin/sh
+
+#################################################################################
+#
+#   Lynis
+# ------------------
+#
+# Copyright (c) Michael Boelen, CISOfy, and many contributors.
+#
+# Website  : https://cisofy.com/
+# Blog     : https://linux-audit.com/
+# GitHub   : https://github.com/CISOfy/lynis
+#
+# Lynis comes with ABSOLUTELY NO WARRANTY. This is free software, and you are
+# welcome to redistribute it under the terms of the GNU General Public License.
+# See LICENSE file for usage of this software.
+#
+######################################################################
+#
+# Helper program to roll back a single CIS control fix
+#
+######################################################################
+#
+# How to use:
+# ------------
+# lynis rollback --test-no <ID>
+#
+######################################################################
+
+    ROLLBACK_TESTNO=""
+
+    while [ $# -ge 1 ]; do
+        case $1 in
+            --test-no)
+                shift
+                ROLLBACK_TESTNO="$1"
+            ;;
+            *)
+                echo "${RED}Error${NORMAL}: unknown argument '$1' for lynis rollback"
+                ExitFatal
+            ;;
+        esac
+        shift
+    done
+
+    if [ -z "${ROLLBACK_TESTNO}" ]; then
+        echo "${RED}Error${NORMAL}: ${WHITE}--test-no <ID> is required${NORMAL}"
+        echo "Example: lynis rollback --test-no SSH-7408"
+        ExitCustom 64
+    fi
+
+    if [ -f "${INCLUDEDIR}/backup" ]; then SafePerms "${INCLUDEDIR}/backup"; . "${INCLUDEDIR}/backup"; fi
+    if [ -f "${INCLUDEDIR}/rollback" ]; then SafePerms "${INCLUDEDIR}/rollback"; . "${INCLUDEDIR}/rollback"; fi
+    if [ -f "${INCLUDEDIR}/remediation" ]; then SafePerms "${INCLUDEDIR}/remediation"; . "${INCLUDEDIR}/remediation"; fi
+
+    RemediationSelectRulesFile
+    if [ -z "${REM_RULES_FILE}" ]; then
+        echo "${RED}Error${NORMAL}: no CIS Level 1 rules file available for ${LINUX_VERSION} ${OS_VERSION}"
+        ExitCustom 1
+    fi
+
+    RemediationFindRule "${REM_RULES_FILE}" "${ROLLBACK_TESTNO}"
+    if [ "${REM_FOUND}" -ne 1 ]; then
+        echo "${RED}Error${NORMAL}: no CIS Level 1 rule matches '${ROLLBACK_TESTNO}' in ${REM_RULES_FILE}"
+        ExitCustom 1
+    fi
+
+    if [ -z "${REM_BACKUP}" ]; then
+        echo "${YELLOW}Rule ${REM_ID} (${REM_TESTNO}) has no associated file to roll back.${NORMAL}"
+        ExitCustom 0
+    fi
+
+    if RollbackFile "${REM_ID}" "${REM_BACKUP}"; then
+        echo "${GREEN}Restored ${REM_BACKUP} from the most recent backup for ${REM_ID} (${REM_TESTNO}).${NORMAL}"
+        RemediationLog "ROLLED_BACK_MANUAL"
+        ExitCustom 0
+    else
+        echo "${RED}No backup found for ${REM_ID} (${REM_TESTNO}) - nothing to roll back.${NORMAL}"
+        ExitCustom 1
+    fi
