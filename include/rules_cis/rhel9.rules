@@ -90,6 +90,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks presence of password strength testing tools in general (PAM), CIS control specifically requires the pam_pwquality module
+fix-cmd=dnf install -y libpwquality pam >/dev/null 2>&1
+verify-cmd=ls /lib64/security/pam_pwquality.so /usr/lib64/security/pam_pwquality.so 2>/dev/null | grep -q pam_pwquality
 
 [AUTH-007]
 test-no=AUTH-9286
@@ -100,6 +102,9 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks general user password aging, CIS control specifies the exact PASS_MAX_DAYS threshold
+backup-file=/etc/login.defs
+fix-cmd=(grep -Eq '^PASS_MIN_DAYS' /etc/login.defs && sed -i -E 's/^PASS_MIN_DAYS[[:space:]]+[0-9]+/PASS_MIN_DAYS   1/' /etc/login.defs || echo 'PASS_MIN_DAYS   1' >> /etc/login.defs); (grep -Eq '^PASS_MAX_DAYS' /etc/login.defs && sed -i -E 's/^PASS_MAX_DAYS[[:space:]]+[0-9]+/PASS_MAX_DAYS   365/' /etc/login.defs || echo 'PASS_MAX_DAYS   365' >> /etc/login.defs)
+verify-cmd=MIN=$(grep -E '^PASS_MIN_DAYS' /etc/login.defs | awk '{print $2}'); MAX=$(grep -E '^PASS_MAX_DAYS' /etc/login.defs | awk '{print $2}'); [ -n "$MIN" ] && [ "$MIN" != "0" ] && [ -n "$MAX" ] && [ "$MAX" != "99999" ]
 
 [KRNL-001]
 test-no=KRNL-5820
@@ -110,6 +115,9 @@ category=security
 level=L1
 mapping=approx
 note=Lynis test checks core dump related sysctl/config broadly (fs.suid_dumpable and similar), CIS control is specifically about systemd-coredump storage configuration
+backup-file=/etc/systemd/coredump.conf
+fix-cmd=grep -q '^\[Coredump\]' /etc/systemd/coredump.conf 2>/dev/null || printf '\n[Coredump]\n' >> /etc/systemd/coredump.conf; (grep -q '^ProcessSizeMax=' /etc/systemd/coredump.conf && sed -i 's/^ProcessSizeMax=.*/ProcessSizeMax=0/' /etc/systemd/coredump.conf || sed -i '/^\[Coredump\]/a ProcessSizeMax=0' /etc/systemd/coredump.conf); (grep -q '^Storage=' /etc/systemd/coredump.conf && sed -i 's/^Storage=.*/Storage=none/' /etc/systemd/coredump.conf || sed -i '/^\[Coredump\]/a Storage=none' /etc/systemd/coredump.conf)
+verify-cmd=grep -Eq '^ProcessSizeMax=0[[:space:]]*$' /etc/systemd/coredump.conf && grep -Eq '^Storage=none[[:space:]]*$' /etc/systemd/coredump.conf
 
 [KRNL-002]
 test-no=KRNL-6000
@@ -130,6 +138,8 @@ category=security
 level=L1
 mapping=approx
 note=Same generic sysctl checker as KRNL-002, applied to a different sysctl key
+fix-cmd=mkdir -p /etc/sysctl.d && printf '%s\n' 'net.ipv4.tcp_syncookies = 1' > /etc/sysctl.d/60-cis-krnl003.conf && sysctl -w net.ipv4.tcp_syncookies=1 >/dev/null 2>&1
+verify-cmd=[ "$(sysctl -n net.ipv4.tcp_syncookies 2>/dev/null)" = "1" ]
 
 [MACF-001]
 test-no=MACF-6232
@@ -139,6 +149,8 @@ severity=Medium
 category=security
 level=L1
 mapping=exact
+fix-cmd=dnf install -y libselinux-utils policycoreutils >/dev/null 2>&1
+verify-cmd=command -v sestatus >/dev/null 2>&1
 
 [MACF-002]
 test-no=MACF-6234
@@ -158,6 +170,8 @@ severity=Low
 category=security
 level=L1
 mapping=exact
+fix-cmd=dnf install -y cronie >/dev/null 2>&1; systemctl enable --now crond >/dev/null 2>&1
+verify-cmd=pgrep -x crond >/dev/null 2>&1
 
 [SCHD-002]
 test-no=SCHD-7718
@@ -168,6 +182,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks presence/listing of at users, CIS control specifically checks file permissions on the at.allow/at.deny access files
+fix-cmd=touch /etc/at.allow; chown root:root /etc/at.allow; chmod 600 /etc/at.allow; grep -q '^root$' /etc/at.allow || echo root >> /etc/at.allow; rm -f /etc/at.deny
+verify-cmd=[ -f /etc/at.allow ] && [ ! -f /etc/at.deny ]
 
 [LOGG-001]
 test-no=LOGG-2230
@@ -178,6 +194,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis test detects a running RSyslog daemon; CIS control is specifically about the package being installed (broader intent, same tool)
+fix-cmd=dnf install -y rsyslog >/dev/null 2>&1; systemctl enable --now rsyslog >/dev/null 2>&1
+verify-cmd=pgrep -x rsyslogd >/dev/null 2>&1
 
 [LOGG-002]
 test-no=LOGG-2136
@@ -187,6 +205,8 @@ severity=Medium
 category=security
 level=L1
 mapping=exact
+fix-cmd=systemctl enable --now systemd-journald >/dev/null 2>&1
+verify-cmd=pgrep -x systemd-journal >/dev/null 2>&1
 
 [FIRE-001]
 test-no=FIRE-4536

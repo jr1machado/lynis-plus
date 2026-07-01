@@ -107,6 +107,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks presence of password strength testing tools in general (PAM), CIS control specifically requires the pam_pwquality module
+fix-cmd=apt-get install -y libpam-pwquality >/dev/null 2>&1
+verify-cmd=ls /usr/lib/*/security/pam_pwquality.so /lib/security/pam_pwquality.so /lib64/security/pam_pwquality.so /usr/lib/security/pam_pwquality.so 2>/dev/null | grep -q pam_pwquality
 
 [AUTH-007]
 test-no=AUTH-9286
@@ -117,6 +119,9 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks general user password aging, CIS control specifies the exact PASS_MAX_DAYS threshold
+backup-file=/etc/login.defs
+fix-cmd=(grep -Eq '^PASS_MIN_DAYS' /etc/login.defs && sed -i -E 's/^PASS_MIN_DAYS[[:space:]]+[0-9]+/PASS_MIN_DAYS   1/' /etc/login.defs || echo 'PASS_MIN_DAYS   1' >> /etc/login.defs); (grep -Eq '^PASS_MAX_DAYS' /etc/login.defs && sed -i -E 's/^PASS_MAX_DAYS[[:space:]]+[0-9]+/PASS_MAX_DAYS   365/' /etc/login.defs || echo 'PASS_MAX_DAYS   365' >> /etc/login.defs)
+verify-cmd=MIN=$(grep -E '^PASS_MIN_DAYS' /etc/login.defs | awk '{print $2}'); MAX=$(grep -E '^PASS_MAX_DAYS' /etc/login.defs | awk '{print $2}'); [ -n "$MIN" ] && [ "$MIN" != "0" ] && [ -n "$MAX" ] && [ "$MAX" != "99999" ]
 
 [KRNL-001]
 test-no=KRNL-5820
@@ -126,6 +131,9 @@ severity=Medium
 category=security
 level=L1
 mapping=exact
+backup-file=/etc/systemd/coredump.conf
+fix-cmd=grep -q '^\[Coredump\]' /etc/systemd/coredump.conf 2>/dev/null || printf '\n[Coredump]\n' >> /etc/systemd/coredump.conf; (grep -q '^ProcessSizeMax=' /etc/systemd/coredump.conf && sed -i 's/^ProcessSizeMax=.*/ProcessSizeMax=0/' /etc/systemd/coredump.conf || sed -i '/^\[Coredump\]/a ProcessSizeMax=0' /etc/systemd/coredump.conf); (grep -q '^Storage=' /etc/systemd/coredump.conf && sed -i 's/^Storage=.*/Storage=none/' /etc/systemd/coredump.conf || sed -i '/^\[Coredump\]/a Storage=none' /etc/systemd/coredump.conf)
+verify-cmd=grep -Eq '^ProcessSizeMax=0[[:space:]]*$' /etc/systemd/coredump.conf && grep -Eq '^Storage=none[[:space:]]*$' /etc/systemd/coredump.conf
 
 [KRNL-002]
 test-no=KRNL-6000
@@ -136,6 +144,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis test is a generic sysctl key/value checker driven by the scan profile, not a dedicated dmesg_restrict test
+fix-cmd=mkdir -p /etc/sysctl.d && printf '%s\n' 'kernel.dmesg_restrict = 1' > /etc/sysctl.d/60-cis-krnl002.conf && sysctl -w kernel.dmesg_restrict=1 >/dev/null 2>&1
+verify-cmd=[ "$(sysctl -n kernel.dmesg_restrict 2>/dev/null)" = "1" ]
 
 [KRNL-003]
 test-no=KRNL-6000
@@ -146,6 +156,8 @@ category=security
 level=L1
 mapping=approx
 note=Same generic sysctl checker as KRNL-002, applied to a different sysctl key
+fix-cmd=mkdir -p /etc/sysctl.d && printf '%s\n' 'kernel.kptr_restrict = 2' > /etc/sysctl.d/60-cis-krnl003.conf && sysctl -w kernel.kptr_restrict=2 >/dev/null 2>&1
+verify-cmd=[ "$(sysctl -n kernel.kptr_restrict 2>/dev/null)" = "2" ]
 
 [MACF-001]
 test-no=MACF-6204
@@ -155,6 +167,8 @@ severity=Medium
 category=security
 level=L1
 mapping=exact
+fix-cmd=apt-get install -y apparmor apparmor-utils >/dev/null 2>&1
+verify-cmd=command -v aa-status >/dev/null 2>&1
 
 [MACF-002]
 test-no=MACF-6208
@@ -164,6 +178,8 @@ severity=High
 category=security
 level=L1
 mapping=exact
+fix-cmd=systemctl enable --now apparmor >/dev/null 2>&1
+verify-cmd=aa-status >/dev/null 2>&1
 
 [BANN-001]
 test-no=BANN-7124
@@ -173,6 +189,9 @@ severity=Low
 category=security
 level=L1
 mapping=exact
+backup-file=/etc/issue
+fix-cmd=test -s /etc/issue || printf 'Authorized users only. All activity may be monitored and reported.\nUnauthorized access to this system is prohibited and may be subject to civil and criminal penalties.\nBy using this system, you consent to such monitoring and information collection in accordance with applicable law.\nDisconnect immediately if you do not agree with these terms.\n' > /etc/issue
+verify-cmd=test -s /etc/issue
 
 [BANN-002]
 test-no=BANN-7128
@@ -182,6 +201,9 @@ severity=Low
 category=security
 level=L1
 mapping=exact
+backup-file=/etc/issue.net
+fix-cmd=test -s /etc/issue.net || printf 'Authorized users only. All activity may be monitored and reported.\nUnauthorized access to this system is prohibited and may be subject to civil and criminal penalties.\nBy using this system, you consent to such monitoring and information collection in accordance with applicable law.\nDisconnect immediately if you do not agree with these terms.\n' > /etc/issue.net
+verify-cmd=test -s /etc/issue.net
 
 [SCHD-001]
 test-no=SCHD-7702
@@ -191,6 +213,8 @@ severity=Low
 category=security
 level=L1
 mapping=exact
+fix-cmd=apt-get install -y cron >/dev/null 2>&1; systemctl enable --now cron >/dev/null 2>&1
+verify-cmd=pgrep -x cron >/dev/null 2>&1
 
 [SCHD-002]
 test-no=SCHD-7718
@@ -201,6 +225,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks presence/listing of at users, CIS control specifically checks file permissions on the at.allow/at.deny access files
+fix-cmd=touch /etc/at.allow; chown root:root /etc/at.allow; chmod 600 /etc/at.allow; grep -q '^root$' /etc/at.allow || echo root >> /etc/at.allow; rm -f /etc/at.deny
+verify-cmd=[ -f /etc/at.allow ] && [ ! -f /etc/at.deny ]
 
 [LOGG-001]
 test-no=LOGG-2230
@@ -211,6 +237,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis test detects a running RSyslog daemon; CIS control is specifically about the package being installed (broader intent, same tool)
+fix-cmd=apt-get install -y rsyslog >/dev/null 2>&1; systemctl enable --now rsyslog >/dev/null 2>&1
+verify-cmd=pgrep -x rsyslogd >/dev/null 2>&1
 
 [LOGG-002]
 test-no=LOGG-2136
@@ -220,6 +248,8 @@ severity=Medium
 category=security
 level=L1
 mapping=exact
+fix-cmd=systemctl enable --now systemd-journald >/dev/null 2>&1
+verify-cmd=pgrep -x systemd-journal >/dev/null 2>&1
 
 [LOGG-003]
 test-no=LOGG-2146
@@ -230,6 +260,8 @@ category=security
 level=L1
 mapping=approx
 note=Lynis checks for presence/consistency of logrotate.conf and logrotate.d, CIS control requires specific rotation/retention settings inside it
+fix-cmd=apt-get install -y logrotate >/dev/null 2>&1
+verify-cmd=[ -f /etc/logrotate.conf ] || [ -d /etc/logrotate.d ]
 
 [FIRE-001]
 test-no=FIRE-4590

@@ -55,17 +55,35 @@ Supported OS: Ubuntu 22.04/24.04 LTS, Oracle Linux 9, RHEL 9, Rocky Linux 9. Oth
 ./lynis apply --test-no <ANY-TEST-ID> --dry-run  # preview impact + commands, no changes made, no prompt
 ```
 
-`<ID>` is the Lynis `test-no` shown in `finding[]=` entries or the hardening report table (e.g. `SSH-7408`); the CIS rule ID (e.g. `SSH-001`) also works. Flow, always in this order:
+`<ID>` is the Lynis `test-no` shown in `finding[]=` entries or the hardening report table (e.g. `SSH-7408`); the CIS rule ID (e.g. `SSH-001`) also works — **use the rule ID** when two CIS controls share the same underlying Lynis test (e.g. `KRNL-002`/`KRNL-003` both map to `KRNL-6000`), since a `test-no` lookup always resolves to the first rule in the file that uses it.
 
-1. Shows the rule's title, CIS section, severity, target file, and the exact fix/verify commands.
+Flow, always in this order:
+
+1. Runs the control's verify command first: **green `[OK]`** and stops if it's already compliant (no prompt, no changes). **Red `[FAIL]`** with the fix/verify preview if it isn't.
 2. If no fix is defined for that control yet, says so and stops — nothing is touched.
 3. Prompts `Apply this fix? [y/N]` — nothing happens without an explicit `y`.
-4. Backs up the target file (`backups/<date>/<rule>.<file>.<timestamp>.bak`, indexed in `backups/manifest.log`).
+4. Backs up the target file, if the control has one (`backups/<date>/<rule>.<file>.<timestamp>.bak`, indexed in `backups/manifest.log`). Controls that only create a new file (e.g. a sysctl drop-in) skip this step by design — see note below.
 5. Runs the fix, then the verify command.
 6. If verification fails, automatically restores the backup and reports the failure.
 7. Logs the outcome to `history/remediation.log` (`timestamp|rule|test-no|status|hostname`).
 
 Only CIS Level 1 rules can be applied — Level 2 controls are intentionally audit-only (higher risk of breaking things) and are never targeted by `apply`.
+
+**Fix coverage (L1):**
+
+| Distro | Controls with a fix | Total L1 controls |
+|---|---|---|
+| Ubuntu 22.04 | 15 | 21 |
+| Ubuntu 24.04 | 16 | 22 |
+| Oracle Linux 9 | 11 | 21 |
+| RHEL 9 | 11 | 21 |
+| Rocky Linux 9 | 11 | 21 |
+
+The remaining controls report "no automated fix available yet" instead of guessing. Left manual on purpose, not for lack of effort:
+- **SSH-002** (AllowUsers/AllowGroups), **AUTH-001/002/003/004** (root UID 0, duplicate UID/GID/group names) — fixing these means picking which account/group to touch; that's a human decision, not something safe to automate generically.
+- **FIRE-001/002/003** (firewall/nftables), **RHEL/Rocky/Oracle's KRNL-002** (disable IP forwarding), **RHEL/Rocky/Oracle's MACF-002** (SELinux enforcing mode) — high blast radius: can lock out remote access or break routing/NAT (e.g. this very fork was developed and tested inside Docker containers, which need IP forwarding) or need a filesystem relabel + reboot. Left for manual, deliberate action.
+
+Controls without a `backup-file` (e.g. the two safe sysctl-only fixes, `KRNL-002`/`KRNL-003` on Ubuntu, `KRNL-003` on RHEL family) create a new drop-in file under `/etc/sysctl.d/` rather than editing a shared config file — `lynis rollback` has nothing to restore for these (it will say so), undo is a manual `rm` of the drop-in plus `sysctl -w <key>=<previous-value>` if needed.
 
 **3. Rolling back a fix**
 
